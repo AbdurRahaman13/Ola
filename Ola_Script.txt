@@ -1,0 +1,86 @@
+use ola;
+ 
+select * from data;
+ 
+select * from localities;
+
+/*Adding column to data table*/ 
+alter table data 
+add column confirmed_At_time datetime;
+
+/*Inserting and converting string to date time*/ 
+update data
+set confirmed_At_time = SUBSTRING(confirmed_at, 1, 19);
+
+/*Dropping old confirmed_at column*/
+alter table data
+drop column confirmed_at;
+
+/*Total No. of bookings with booking_type = p2p catgorized by booking mode as 'phone', 'online','app',etc*/
+/*View*/
+create view Bookings_by_p2p as 
+select count(booking_id)
+from data
+where booking_type= "p2p" and booking_mode in ("phone","onine","app");
+
+select * from Bookings_by_p2p;
+
+/*Top 5 drop zones in terms of  average revenue**/
+select zone_id, avg(fare) as Totalfare
+from data d inner join localities l on d.droparea=l.area
+group by zone_id
+order by 2 desc
+limit 5;
+ 
+/*Finding all unique driver numbers grouped by top 5 pickzones*/
+/*1st step Top 5 pickup zones*/
+select zone_id, sum(fare) as Totalfare
+from data d inner join localities l on d.pickuparea=l.area
+group by zone_id
+order by 2 desc
+limit 5;
+ 
+/*2nd step*/
+select distinct l.zone_id,Driver_number
+from data d inner join localities l on d.PickupArea=l.area
+			inner join (select zone_id, sum(fare) as Totalfare
+						from data d inner join localities l on d.pickuparea=l.area
+						group by zone_id
+                        order by 2 desc
+						limit 5) as TPZ ON l.zone_id=TPZ.zone_id
+order by l.zone_id,Driver_number;                      
+ 
+/*Make a hourwise table of bookings for week between Nov01-Nov-07 and highlight the hours with more than average no.of bookings day wise*/
+/*Day wise Total Bookings*/ 
+select day(newpickupdatetime),count(*) as TotalDaywisebookings
+from data 
+group by  day(newpickupdatetime)
+order by 1;
+
+/*User defined variable and Assigning Daily_Average_Bookings*/                                         
+set @Dailyaveragebookings := ( select avg(Totaldaywisebookings) as DailyAverageBookings
+                                from
+                                     (select day(newpickupdatetime),count(*) as TotalDaywisebookings
+                                      from data 
+                                       group by  day(newpickupdatetime))as temptable);
+                                       
+select @Dailyaveragebookings;
+
+/*Highlighting hours with more than average no.of bookings for week between Nov01-Nov-07 */
+/*Stored Procedure*/
+
+DELIMITER //
+create procedure Highlighted_Hours()
+begin
+
+select hour(newpickupdatetime),count(*) as Totalbookings
+from data
+where newpickupdatetime between "2013-11-01" and "2013-11-07"
+group by hour(newpickupdatetime)
+having Totalbookings > @Dailyaveragebookings 
+order by 1;
+
+end//
+DELIMITER ;
+
+call Highlighted_Hours();
